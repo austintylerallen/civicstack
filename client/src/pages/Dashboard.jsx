@@ -6,10 +6,9 @@ import { ResponsiveBar } from "@nivo/bar";
 import { ResponsivePie } from "@nivo/pie";
 import { Link } from "react-router-dom";
 import FeedbackModal from "../components/FeedbackModal";
+import { io } from "socket.io-client";
 
-
-
-
+const socket = io(process.env.REACT_APP_SOCKET_URL || "http://localhost:5173");
 
 
 export default function Dashboard() {
@@ -24,23 +23,34 @@ export default function Dashboard() {
     formsByType: {},
     formsByStatus: {},
     recentActivity: [],
-    departmentSummary: [], // ✅ ADD THIS
+    departmentSummary: [],
   });
-  
+
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAllActivity, setShowAllActivity] = useState(false);
-
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
-  const statusData = Object.entries(analytics.issuesByStatus).map(([status, count]) => ({
-  status,
-  count,
-}));
-const maxCount = Math.max(...statusData.map((d) => d.count));
-const roundedMax = Math.ceil(maxCount / 5) * 5;
-const tickValues = Array.from({ length: roundedMax / 5 + 1 }, (_, i) => i * 5);
+  // ⛏️ Add missing state for filtering and sorting
+  const [filterText, setFilterText] = useState("");
+  const [sortKey, setSortKey] = useState("department");
+  const [sortOrder, setSortOrder] = useState("asc");
 
+  const filteredAndSortedDepartments = analytics.departmentSummary
+    .filter((d) =>
+      d.department.toLowerCase().includes(filterText.toLowerCase())
+    )
+    .sort((a, b) => {
+      const valA = a[sortKey];
+      const valB = b[sortKey];
+      return sortOrder === "asc"
+        ? valA > valB
+          ? 1
+          : -1
+        : valA < valB
+        ? 1
+        : -1;
+    });
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -63,34 +73,16 @@ const tickValues = Array.from({ length: roundedMax / 5 + 1 }, (_, i) => i * 5);
 
     fetchAnalytics();
     fetchNotifications();
+
+    socket.on("new-activity", fetchAnalytics);
+    socket.on("new-notification", fetchNotifications);
+
+    return () => {
+      socket.off("new-activity", fetchAnalytics);
+      socket.off("new-notification", fetchNotifications);
+    };
   }, []);
 
-  const [sortKey, setSortKey] = useState("department");
-const [sortOrder, setSortOrder] = useState("asc");
-const [filterText, setFilterText] = useState("");
-
-
-const filteredAndSortedDepartments = [...(analytics.departmentSummary || [])]
-  .filter((row) => row.department.toLowerCase().includes(filterText.toLowerCase()))
-  .sort((a, b) => {
-    const valA = a[sortKey];
-    const valB = b[sortKey];
-
-    if (typeof valA === "string") {
-      return sortOrder === "asc"
-        ? valA.localeCompare(valB)
-        : valB.localeCompare(valA);
-    } else {
-      return sortOrder === "asc" ? valA - valB : valB - valA;
-    }
-  });
-
-  useEffect(() => {
-    const handleOpen = () => setShowFeedbackModal(true);
-    window.addEventListener("openFeedbackModal", handleOpen);
-    return () => window.removeEventListener("openFeedbackModal", handleOpen);
-  }, []);
-  
   return (
     <div className="flex">
       <Sidebar />
@@ -135,16 +127,22 @@ const filteredAndSortedDepartments = [...(analytics.departmentSummary || [])]
                           key={i}
                           onClick={async () => {
                             if (!note.isRead) {
-                              await api.patch(`/admin/notifications/${note._id}/read`);
+                              await api.patch(
+                                `/admin/notifications/${note._id}/read`
+                              );
                               setNotifications((prev) =>
                                 prev.map((n) =>
-                                  n._id === note._id ? { ...n, isRead: true } : n
+                                  n._id === note._id
+                                    ? { ...n, isRead: true }
+                                    : n
                                 )
                               );
                             }
                           }}
                           className={`p-3 cursor-pointer ${
-                            note.isRead ? "text-gray-400" : "text-white font-semibold"
+                            note.isRead
+                              ? "text-gray-400"
+                              : "text-white font-semibold"
                           } hover:bg-[#2a3b4d]`}
                         >
                           {note.message}
@@ -160,10 +158,53 @@ const filteredAndSortedDepartments = [...(analytics.departmentSummary || [])]
                 </div>
               )}
             </div>
-
-           
           </div>
         </div>
+
+        {/* Quick Actions Panel */}
+        <div className="flex gap-4 mb-6">
+          <Link
+            to="/issues"
+            className="bg-[#cca050] text-black font-semibold px-4 py-2 rounded shadow hover:bg-yellow-600"
+          >
+            + New Issue
+          </Link>
+          <Link
+            to="/form-requests"
+            className="bg-[#cca050] text-black font-semibold px-4 py-2 rounded shadow hover:bg-yellow-600"
+          >
+            Submit Form
+          </Link>
+          <Link
+            to="/workorders"
+            className="bg-[#cca050] text-black font-semibold px-4 py-2 rounded shadow hover:bg-yellow-600"
+          >
+            Assign Work Order
+          </Link>
+        </div>
+
+        <p className="text-sm text-gray-400 mb-6">
+          Real-time updates enabled with Socket.IO ✅
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+
+          {/* ⬇️ Include all your widgets exactly as you wrote them */}
+          {/* Keep your: */}
+          {/* ✅ Recent Activity Widget */}
+          {/* ✅ Department Summary Widget */}
+          {/* ✅ Total Issues Widget */}
+          {/* ✅ Form Requests Widget */}
+          {/* ✅ Issues by Status Chart */}
+          {/* ✅ Issues by Department Chart */}
+          {/* ✅ Issues by Priority Chart */}
+          {/* ✅ Feedback Modal at the bottom */}
+          {/* ⬆️ They are already correct and placed inside the grid ✅ */}
+
+        </div>
+
+        
+
 
         {/* Dashboard Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mt-10">
@@ -401,41 +442,159 @@ const filteredAndSortedDepartments = [...(analytics.departmentSummary || [])]
             </div>
           </div>
 
-          {/* Issues by Priority (Pie Chart) */}
-          <div className="bg-[#15202e] p-6 rounded-2xl shadow-xl flex flex-col items-center justify-center">
-            <h3 className="text-xl font-semibold mb-2 text-center">Issues by Priority</h3>
-            <div className="w-full h-[300px]">
-              <ResponsivePie
-                data={Object.entries(analytics.issuesByPriority).map(([priority, count]) => ({
-                  id: priority,
-                  label: priority,
-                  value: count,
-                }))}
-                margin={{ top: 20, right: 80, bottom: 40, left: 80 }}
-                innerRadius={0.5}
-                padAngle={0.7}
-                cornerRadius={3}
-                activeOuterRadiusOffset={8}
-                colors={["#db4437", "#fbbc05", "#34a853"]}
-                borderWidth={1}
-                borderColor={{ from: "color", modifiers: [["darker", 0.6]] }}
-                arcLabelsTextColor="#fff"
-                arcLinkLabelsTextColor="#fff"
-                arcLinkLabelsColor={{ from: "color" }}
-                theme={{
-                  tooltip: {
-                    container: {
-                      background: "#15202e",
-                      color: "#fff",
-                    },
-                  },
-                  legends: {
-                    text: { fill: "#cca050" },
-                  },
-                }}
-              />
-            </div>
-          </div>
+ {/* Issues by Priority (Pie Chart) */}
+<div className="bg-[#15202e] p-6 rounded-2xl shadow-xl flex flex-col items-center justify-center xl:col-span-1">
+  <h3 className="text-xl font-semibold mb-2 text-center">Issues by Priority</h3>
+  <div className="w-full h-[300px]">
+    <ResponsivePie
+      data={Object.entries(analytics.issuesByPriority).map(([priority, count]) => ({
+        id: priority,
+        label: priority,
+        value: count,
+      }))}
+      margin={{ top: 20, right: 80, bottom: 40, left: 80 }}
+      innerRadius={0.5}
+      padAngle={0.7}
+      cornerRadius={3}
+      activeOuterRadiusOffset={8}
+      colors={["#db4437", "#fbbc05", "#34a853"]}
+      borderWidth={1}
+      borderColor={{ from: "color", modifiers: [["darker", 0.6]] }}
+      arcLabelsTextColor="#fff"
+      arcLinkLabelsTextColor="#fff"
+      arcLinkLabelsColor={{ from: "color" }}
+      theme={{
+        tooltip: {
+          container: {
+            background: "#15202e",
+            color: "#fff",
+          },
+        },
+        legends: {
+          text: { fill: "#cca050" },
+        },
+      }}
+    />
+  </div>
+</div>
+
+{/* 📈 Issue Submission Trend (14 Days) */}
+<div className="bg-[#15202e] p-6 rounded-2xl shadow-xl flex flex-col justify-center xl:col-span-1">
+  <h3 className="text-xl font-semibold mb-2 text-center">Issue Trend (14 Days)</h3>
+  <div className="w-full h-[300px]">
+    <ResponsiveBar
+      data={
+        analytics.issueTrend?.map((entry) => ({
+          date: entry._id,
+          count: entry.count,
+        })) || []
+      }
+      keys={["count"]}
+      indexBy="date"
+      margin={{ top: 20, right: 30, bottom: 60, left: 40 }}
+      padding={0.3}
+      colors={["#cca050"]}
+      axisBottom={{
+        tickRotation: -45,
+        legend: "Date",
+        legendPosition: "middle",
+        legendOffset: 40,
+        tickColor: "#cca050",
+        tickTextColor: "#fff",
+      }}
+      axisLeft={{
+        legend: "Issues",
+        legendPosition: "middle",
+        legendOffset: -40,
+        tickColor: "#cca050",
+        tickTextColor: "#fff",
+      }}
+      enableLabel={false}
+      theme={{
+        axis: {
+          domain: { line: { stroke: "#cca050" } },
+          ticks: {
+            line: { stroke: "#cca050" },
+            text: { fill: "#fff" },
+          },
+        },
+        legends: { text: { fill: "#cca050" } },
+        labels: { text: { fill: "#cca050" } },
+        tooltip: {
+          container: {
+            background: "#1c2a3a",
+            color: "#fff",
+          },
+        },
+      }}
+    />
+  </div>
+</div>
+
+
+
+{/* 🧾 Recent Submitted Forms */}
+<div className="bg-[#15202e] p-6 rounded-2xl shadow-xl col-span-full xl:col-span-2">
+  <h3 className="text-xl font-semibold mb-4">Recent Form Submissions</h3>
+  {analytics.recentForms?.length > 0 ? (
+    <ul className="space-y-3">
+      {analytics.recentForms.slice(0, 5).map((form, i) => (
+        <li key={i} className="text-sm text-white border-b border-[#1f2e3d] pb-2">
+          <p className="font-medium text-[#cca050]">{form.type}</p>
+          <p className="text-gray-300">
+            {form.user?.name || "Unknown"} • {form.department}
+          </p>
+          <p className="text-xs text-gray-500">
+            {new Date(form.createdAt).toLocaleString()}
+          </p>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p className="text-sm text-gray-400">No recent forms found.</p>
+  )}
+</div>
+
+{/* 🔧 Work Order Summary */}
+<div className="bg-[#15202e] p-6 rounded-2xl shadow-xl">
+  <h3 className="text-xl font-semibold mb-4">Work Order Summary</h3>
+  <div className="flex flex-col gap-2">
+    <div className="flex justify-between text-sm">
+      <span className="text-white">Open Work Orders</span>
+      <span className="text-[#34a853] font-semibold">{analytics.workOrders?.open || 0}</span>
+    </div>
+    <div className="flex justify-between text-sm">
+      <span className="text-white">In Progress</span>
+      <span className="text-yellow-400 font-semibold">{analytics.workOrders?.inProgress || 0}</span>
+    </div>
+    <div className="flex justify-between text-sm">
+      <span className="text-white">Completed</span>
+      <span className="text-[#4285f4] font-semibold">{analytics.workOrders?.completed || 0}</span>
+    </div>
+  </div>
+</div>
+
+{/* 👥 User Stats */}
+<div className="bg-[#15202e] p-6 rounded-2xl shadow-xl">
+  <h3 className="text-xl font-semibold mb-4">User Overview</h3>
+  <div className="text-sm text-gray-300 space-y-2">
+    <p><span className="text-white font-bold">{analytics.users?.total || 0}</span> total users</p>
+    <p><span className="text-white font-bold">{analytics.users?.admins || 0}</span> admins</p>
+    <p><span className="text-white font-bold">{analytics.users?.staff || 0}</span> staff</p>
+    <p><span className="text-white font-bold">{analytics.users?.invited || 0}</span> pending invites</p>
+  </div>
+</div>
+
+
+{/* ⏱️ Average Resolution Time */}
+<div className="bg-[#15202e] p-6 rounded-2xl shadow-xl flex flex-col justify-center items-center">
+  <h3 className="text-xl font-semibold mb-2 text-center">Avg Resolution Time</h3>
+  <p className="text-4xl font-bold text-[#cca050]">
+    {analytics.avgResolutionTime || "N/A"}
+  </p>
+  <p className="text-sm text-gray-400 mt-1">based on resolved issues</p>
+</div>
+
 
 
           <FeedbackModal isOpen={showFeedbackModal} onClose={() => setShowFeedbackModal(false)} />

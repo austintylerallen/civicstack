@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import http from 'http';
+import { Server as SocketServer } from 'socket.io';
 
 import { verifyToken } from './middleware/auth.js';
 
@@ -16,17 +18,10 @@ import workOrderRoutes from './routes/workOrderRoutes.js';
 import formRoutes from './routes/formRoutes.js';
 import announcementRoutes from './routes/announcementRoutes.js';
 import developmentRoutes from './routes/developmentRoutes.js';
-import feedbackRoutes from "./routes/feedbackRoutes.js";
-import careerRoutes from "./routes/careerRoutes.js";
-import settingsRoutes from "./routes/settingsRoutes.js";
-import userRoutes from "./routes/userRoutes.js";
-
-
-
-
-
-
-
+import feedbackRoutes from './routes/feedbackRoutes.js';
+import careerRoutes from './routes/careerRoutes.js';
+import settingsRoutes from './routes/settingsRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 
 dotenv.config();
 console.log("✅ EMAIL_USER:", process.env.EMAIL_USER);
@@ -76,17 +71,43 @@ app.use("/api/careers", careerRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/users", userRoutes);
 
-// 🛠️ DB and Server
+// ✅ Ensure MONGO_URI exists
 if (!process.env.MONGO_URI) {
   console.error('❌ MONGO_URI is missing in .env');
   process.exit(1);
 }
 
+// ✅ Create HTTP server to attach Socket.IO
+const server = http.createServer(app);
+
+// ✅ Attach Socket.IO
+const io = new SocketServer(server, {
+  cors: {
+    origin: "http://localhost:3000",
+    credentials: true,
+  },
+});
+
+
+
+// 🔌 Handle socket connections
+io.on("connection", (socket) => {
+  console.log("🟢 Socket connected:", socket.id);
+
+  // Emit welcome event or keep-alive test
+  socket.emit("welcome", "Connected to CivicStack socket server");
+
+  socket.on("disconnect", () => {
+    console.log("🔌 Socket disconnected:", socket.id);
+  });
+});
+
+// 🛠️ Connect to Mongo and start server
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     const PORT = process.env.PORT || 5173;
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+    server.listen(PORT, () => {
+      console.log(`🚀 Server with Socket.IO running on http://localhost:${PORT}`);
     });
   })
   .catch(err => console.error('MongoDB connection error:', err));
